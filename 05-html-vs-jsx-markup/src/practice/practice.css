@@ -1,0 +1,14 @@
+.practice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 40px;
+  margin: 60px auto;
+  padding: 0 16px;
+  color: #3c5687;
+
+  & h1 {
+    margin: 0 0 12px;
+    font-size: 2rem;
+  }
+}
