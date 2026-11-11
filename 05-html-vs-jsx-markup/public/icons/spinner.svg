@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 -3 83 53" width="83" height="53" role="img" aria-label="로딩 중">
+  <!-- Vite 로고(괄호 + 번개)의 외곽선을 따라 선이 그려졌다 지워지는 로딩 애니메이션 -->
+  <!-- 괄호 색: <img> 안의 SVG 는 페이지 배경이 아니라 OS 다크 모드를 따라가므로, 밝은/어두운 배경 모두에서 보이는 고정 색 사용 -->
+  <style>
+    .paren { stroke: #646cff; }
+    .parenTrack { fill: #646cff; }
+  </style>
+  <defs>
+    <linearGradient id="bolt" x1="14" y1="0" x2="62" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#bd34fe" />
+      <stop offset="100%" stop-color="#863bff" />
+    </linearGradient>
+    <path id="boltPath" pathLength="100" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z" />
+    <path id="leftParen" pathLength="100" d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789z" />
+    <path id="rightParen" pathLength="100" d="M69.343 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789z" />
+  </defs>
+
+  <!-- 흐린 배경 실루엣 -->
+  <g opacity="0.08">
+    <use href="#leftParen" class="parenTrack" />
+    <use href="#rightParen" class="parenTrack" />
+    <use href="#boltPath" fill="#863bff" />
+  </g>
+
+  <!-- 번개 안쪽 채움: 외곽선이 다 그려지는 순간 살짝 차올랐다 빠짐 -->
+  <use href="#boltPath" fill="url(#bolt)" fill-opacity="0">
+    <animate attributeName="fill-opacity" values="0; 0; 0.9; 0; 0" keyTimes="0; 0.38; 0.5; 0.62; 1"
+      dur="2.4s" repeatCount="indefinite" />
+  </use>
+
+  <!--
+    pathLength="100" 으로 경로 길이를 100 으로 맞추고 stroke-dashoffset 을 101 → 0 → -101 로 움직이면
+    선이 그려졌다(draw) 지워짐(erase). keySplines 로 천천히 출발 → 빠르게 → 천천히 멈추는 가속도를 줌
+  -->
+  <g fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <use href="#boltPath" stroke="url(#bolt)" stroke-dasharray="100 102">
+      <animate attributeName="stroke-dashoffset" values="101; 0; -101" keyTimes="0; 0.5; 1"
+        dur="2.4s" repeatCount="indefinite" calcMode="spline" keySplines="0.7 0 0.3 1; 0.7 0 0.3 1" />
+    </use>
+
+    <!-- 괄호는 번개보다 조금 늦게 출발 (begin 음수 대신 keyTimes 로 지연) -->
+    <use href="#leftParen" class="paren" stroke-dasharray="100 102">
+      <animate attributeName="stroke-dashoffset" values="101; 101; 0; -101" keyTimes="0; 0.12; 0.55; 1"
+        dur="2.4s" repeatCount="indefinite" calcMode="spline" keySplines="0 0 1 1; 0.7 0 0.3 1; 0.7 0 0.3 1" />
+    </use>
+    <use href="#rightParen" class="paren" stroke-dasharray="100 102">
+      <animate attributeName="stroke-dashoffset" values="101; 101; 0; -101" keyTimes="0; 0.12; 0.55; 1"
+        dur="2.4s" repeatCount="indefinite" calcMode="spline" keySplines="0 0 1 1; 0.7 0 0.3 1; 0.7 0 0.3 1" />
+    </use>
+  </g>
+</svg>

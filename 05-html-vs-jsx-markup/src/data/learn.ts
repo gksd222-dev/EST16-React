@@ -1,4 +1,3 @@
-
 export const statusMessage:StateMessage[] = [
   '⌛️ 대기',
   '⏳ 로딩 중...',
@@ -11,7 +10,7 @@ export const IMAGE_TYPES:ImageType[] = [
   'next.js',
   'kakao talk'
 ]
-export const imageType:ImageType = 'kakao talk';
+export const imageType:ImageType = 'next.js';
 
 export const isShowReactImage: boolean = true;
 
