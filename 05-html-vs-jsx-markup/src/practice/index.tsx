@@ -4,6 +4,8 @@ import './practice.css';
 import ProfileCard from './dataBinding/profileCard';
 import OrderCard from './conditionalRendering/OrderCard';
 import { orders } from './conditionalRendering/data';
+import PlayListCard from './renderList/PlayListCard';
+import { playlists } from './renderList/data';
 
 
 
@@ -21,6 +23,16 @@ function Practice():JSX.Element {
           <OrderCard order={orders[1]} />
           <OrderCard order={orders[2]} />
           <OrderCard order={orders[3]} />
+        </div>
+      </section>
+      <section>
+        <h1>Render List</h1>
+        <div>
+          {
+            playlists.map((playList)=>(
+              <PlayListCard key={playList.id} playlist={playList} />
+            ))
+          }
         </div>
       </section>
     </div>
