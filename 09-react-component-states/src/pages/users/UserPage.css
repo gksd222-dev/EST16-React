@@ -1,0 +1,288 @@
+.UserPage {
+  --accent: #4f8cff;
+  --surface: rgb(255 255 255 / 0.04);
+  --border: rgb(255 255 255 / 0.08);
+
+  inline-size: min(560px, 100vw - 32px);
+  margin-block-end: 80px;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background-color: var(--gray-900);
+  animation: page-in 400ms ease-out both;
+
+  .UserPage__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+      color: var(--white);
+    }
+  }
+}
+
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+
+/* [검색 토글] ---------------------------------------------- */
+
+.InstantSearch {
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 13px;
+    color: var(--gray-300);
+    cursor: pointer;
+    user-select: none;
+    transition: color 200ms;
+
+    &:has(:checked) { color: var(--white); }
+  }
+
+  input {
+    appearance: none;
+    position: relative;
+    inline-size: 38px;
+    block-size: 22px;
+    margin: 0;
+    border-radius: 999px;
+    background-color: var(--gray-700);
+    cursor: pointer;
+    transition: background-color 250ms;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset-block-start: 3px;
+      inset-inline-start: 3px;
+      inline-size: 16px;
+      block-size: 16px;
+      border-radius: 50%;
+      background-color: var(--white);
+      transition: transform 200ms ease-out;
+    }
+
+    &:checked {
+      background-color: var(--accent);
+      &::before { transform: translateX(16px); }
+    }
+
+    &:focus-visible { outline-offset: 2px; border-radius: 999px; }
+  }
+}
+
+
+/* [검색창] ---------------------------------------------- */
+
+.UserSearchBox {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+
+  .control {
+    flex: 1;
+    display: inline-flex;
+    flex-flow: column;
+    gap: 6px;
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--gray-400);
+    }
+  }
+
+  input {
+    block-size: 42px;
+    padding-inline: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background-color: var(--surface);
+    color: var(--white);
+    transition: border-color 200ms, box-shadow 200ms, background-color 200ms;
+
+    &::placeholder { color: var(--gray-500); }
+
+    &:hover { border-color: rgb(255 255 255 / 0.16); }
+
+    &:focus,
+    &:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgb(79 140 255 / 0.25);
+    }
+  }
+
+  button {
+    block-size: 42px;
+    padding-inline: 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color 150ms, color 150ms;
+
+  }
+
+  [type="submit"] {
+    color: var(--gray-950);
+    background-color: var(--gray-50);
+
+    &:hover { background-color: var(--white); }
+  }
+
+  [type="reset"] {
+    color: var(--gray-200);
+    background-color: var(--surface);
+    border-color: var(--border);
+
+    &:hover { background-color: rgb(255 255 255 / 0.08); color: var(--white); }
+  }
+}
+
+
+
+/* [사용자 목록] ---------------------------------------------- */
+
+.UserList {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-block-size: 440px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-700) transparent;
+
+  li {
+    --hue: 250;
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 14px;
+    animation: item-in 300ms ease-out both;
+    animation-delay: calc(min(var(--i, 0), 12) * 25ms);
+    transition: background-color 150ms;
+
+    &:hover { background-color: var(--surface); }
+  }
+
+  .avatar-initial {
+    flex-shrink: 0;
+    display: grid;
+    place-content: center;
+    inline-size: 36px;
+    block-size: 36px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 600;
+    color: hsl(var(--hue) 45% 80%);
+    background-color: hsl(var(--hue) 20% 26%);
+  }
+
+  .info {
+    min-inline-size: 0;
+    display: flex;
+    flex-direction: column;
+
+    strong { color: var(--white); }
+
+    a {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--gray-400);
+      transition: color 200ms;
+
+      &:hover { color: var(--gray-200); text-decoration: underline; }
+    }
+  }
+
+  .city {
+    margin-inline-start: auto;
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--gray-300);
+    background-color: rgb(255 255 255 / 0.06);
+  }
+
+  &:empty::before {
+    content: '검색 결과가 없습니다';
+    padding-block: 40px;
+    text-align: center;
+    color: var(--gray-500);
+    animation: item-in 400ms ease-out both;
+  }
+}
+
+@keyframes item-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+
+/* [결과 개수] ---------------------------------------------- */
+
+.UserListCount {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--gray-400);
+
+  .text {
+    display: flex;
+    justify-content: space-between;
+
+    b { color: var(--white); }
+  }
+
+  .bar {
+    block-size: 4px;
+    border-radius: 999px;
+    background-color: rgb(255 255 255 / 0.06);
+    overflow: hidden;
+
+    span {
+      display: block;
+      block-size: 100%;
+      inline-size: calc(var(--ratio, 1) * 100%);
+      border-radius: inherit;
+      background-color: var(--accent);
+      transition: inline-size 400ms ease-out;
+    }
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .UserPage, .UserPage * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,106 @@
+.ProductPage {
+  --accent: #4f8cff;
+  --border: rgb(255 255 255 / 0.08);
+
+  inline-size: min(480px, 100vw - 32px);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background-color: var(--gray-900);
+
+  h1 {
+    margin: 0;
+    font-size: 20px;
+    color: var(--white);
+  }
+}
+
+.ProductSearch {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-400);
+  }
+
+  input {
+    block-size: 40px;
+    padding-inline: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background-color: rgb(255 255 255 / 0.04);
+    color: var(--white);
+
+    &:focus { outline: none; border-color: var(--accent); }
+  }
+}
+
+.StockFilter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--gray-300);
+
+  input { accent-color: var(--accent); }
+}
+
+.ProductList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background-color: rgb(255 255 255 / 0.04);
+    font-size: 14px;
+
+    strong { color: var(--white); }
+
+    .price {
+      margin-inline-start: auto;
+      color: var(--gray-300);
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--white);
+      background-color: var(--accent);
+    }
+
+    &.sold-out {
+      opacity: 0.5;
+      .badge { background-color: var(--gray-700); }
+    }
+  }
+
+  &:empty::before {
+    content: '검색 결과가 없습니다';
+    padding-block: 24px;
+    text-align: center;
+    color: var(--gray-500);
+  }
+}
+
+.ProductCount {
+  margin: 0;
+  font-size: 13px;
+  color: var(--gray-400);
+
+  b { color: var(--white); }
+}
