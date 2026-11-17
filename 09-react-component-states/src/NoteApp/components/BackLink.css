@@ -1,0 +1,17 @@
+.BackLink {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  margin-block-end: 24px;
+  border: 1px solid var(--note-border);
+  border-radius: 999px;
+  background: var(--note-surface);
+  transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+
+  &:hover {
+    background: var(--note-surface-hover);
+    border-color: var(--note-accent);
+    transform: translateX(-2px);
+  }
+}

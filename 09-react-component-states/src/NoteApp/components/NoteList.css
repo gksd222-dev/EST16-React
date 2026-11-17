@@ -1,0 +1,66 @@
+.NoteList {
+  inline-size: 100%;
+
+  h2 {
+    margin: 0 0 20px;
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  ul {
+    display: flex;
+    flex-flow: column;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: note;
+  }
+
+  li {
+    counter-increment: note;
+  }
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    border: 1px solid var(--note-border);
+    border-radius: var(--note-radius);
+    background: var(--note-surface);
+    color: var(--note-text);
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+
+    &::before {
+      content: counter(note, decimal-leading-zero);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--note-accent);
+    }
+
+    &::after {
+      content: '→';
+      margin-inline-start: auto;
+      color: var(--note-text-muted);
+      opacity: 0;
+      transform: translateX(-4px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    &:hover {
+      background: var(--note-surface-hover);
+      border-color: var(--note-accent);
+      transform: translateY(-1px);
+
+      &::after {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+}

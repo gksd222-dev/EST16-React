@@ -1,4 +1,6 @@
-import ProductPage from "./pages/products/ProductPage"
+import NoteApp from "@/NoteApp/App";
+// import ProductPage from "./pages/products/ProductPage-1"
+
 //import UserPage from "./pages/users/UserPage"
 
 
@@ -11,7 +13,8 @@ function Playground() {
   return (
     <div style={styles}>
       {/* <UserPage /> */}
-      <ProductPage />
+      {/* <ProductPage /> */}
+      <NoteApp />
     </div>
   )
 }

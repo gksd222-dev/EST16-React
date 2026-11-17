@@ -1,0 +1,83 @@
+/* NoteApp 공통 스타일 (디자인 토큰 · 페이지 레이아웃 · 페이지 스크롤바) */
+
+:root {
+  --note-bg: #16161a;
+  --note-surface: #1f1f25;
+  --note-surface-hover: #26262e;
+  --note-border: #2e2e38;
+  --note-text: #ececf1;
+  --note-text-muted: #9a9aa8;
+  --note-accent: #8b7cf6;
+  --note-accent-hover: #a397ff;
+  --note-danger: #f26d6d;
+  --note-radius: 12px;
+}
+
+body:has(.NoteListPage, .NoteDetailPage, .NoteCreatePage, .NoteEditPage) {
+  background: var(--note-bg);
+  color: var(--note-text);
+}
+
+/* 페이지 스크롤바 */
+html:has(.NoteListPage, .NoteDetailPage, .NoteCreatePage, .NoteEditPage) {
+  color-scheme: dark;
+
+  &::-webkit-scrollbar {
+    inline-size: 10px;
+    block-size: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background: var(--note-border) padding-box;
+
+    &:hover {
+      background-color: var(--note-text-muted);
+    }
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Firefox는 ::-webkit-scrollbar 미지원 → 표준 속성 사용 (Chrome에선 webkit 스타일 유지) */
+@supports (-moz-appearance: none) {
+  html:has(.NoteListPage, .NoteDetailPage, .NoteCreatePage, .NoteEditPage) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--note-border) transparent;
+  }
+}
+
+:where(.NoteListPage, .NoteDetailPage, .NoteCreatePage, .NoteEditPage) {
+  box-sizing: border-box;
+  /* body가 flex(center)라 부모 너비가 내용에 맞춰 줄어듦 → % 대신 고정 너비 */
+  inline-size: min(640px, 100vw);
+  margin-inline: auto;
+  padding: 56px 16px 80px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+:where(.NoteCreatePage, .NoteEditPage) {
+  display: flex;
+  flex-flow: column;
+  gap: 20px;
+
+  h2 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+}
+
+/* import 순서와 무관하게 BackLink.css보다 우선하도록 클래스 2개 명시도 */
+:is(.NoteCreatePage, .NoteEditPage) > .BackLink {
+  margin-block-end: 0;
+}

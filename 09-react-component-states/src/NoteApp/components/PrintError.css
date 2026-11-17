@@ -1,0 +1,17 @@
+
+
+
+.PrintError {
+  margin: 0;
+  padding: 16px 20px;
+  border: 1px solid rgb(242 109 109 / 40%);
+  border-radius: 12px;
+  background: rgb(242 109 109 / 10%);
+  color: #ff8a8a;
+  font-weight: 700;
+  font-size: 16px;
+
+  &::before {
+    content: '🚫 ';
+  }
+}

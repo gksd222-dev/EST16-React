@@ -1,0 +1,30 @@
+.NoteListPage {
+  display: flex;
+  flex-flow: column;
+  gap: 24px;
+  align-items: start;
+
+  .createNoteLink {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 20px;
+    border-radius: 999px;
+    background-color: var(--note-accent);
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color 0.2s, transform 0.2s;
+
+    &::before {
+      content: '+';
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    &:hover {
+      background-color: var(--note-accent-hover);
+      transform: translateY(-1px);
+    }
+  }
+}

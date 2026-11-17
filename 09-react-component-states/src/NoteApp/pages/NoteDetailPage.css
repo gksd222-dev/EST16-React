@@ -1,0 +1,67 @@
+
+
+
+
+
+
+.NoteDetailPage {
+
+  h2 {
+    margin: 0 0 16px;
+    font-size: 40px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-block-end: 32px;
+    padding: 6px 6px 6px 14px;
+    border: 1px solid var(--note-border);
+    border-radius: 999px;
+    background: var(--note-surface);
+    color: var(--note-text-muted);
+    font-size: 14px;
+    font-weight: 600;
+
+    a {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--note-accent);
+      color: #fff;
+      text-decoration: none;
+      transition: background-color 0.2s;
+
+      &:hover {
+        background: var(--note-accent-hover);
+      }
+    }
+  }
+
+  a {
+    color: var(--note-accent);
+    text-underline-offset: 4px;
+  }
+
+  > div {
+    padding: 28px;
+    border: 1px solid var(--note-border);
+    border-radius: var(--note-radius);
+    background: var(--note-surface);
+  }
+
+  p {
+    margin: 0 0 1em;
+    font-size: 16px;
+    line-height: 1.9;
+    color: #d4d4dc;
+
+    &:last-child {
+      margin-block-end: 0;
+    }
+  }
+
+}

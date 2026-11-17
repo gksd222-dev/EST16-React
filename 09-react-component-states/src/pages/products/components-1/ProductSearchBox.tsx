@@ -7,12 +7,11 @@ import { useId } from "react";
 interface Props {
   onSearch: (userInput:string) => void;
   searchTerm: string;
-  isInstantSearch:boolean;
 }
 
 
 
-function ProductSearchBox({onSearch, searchTerm, isInstantSearch}:Props) {
+function ProductSearchBox({onSearch, searchTerm}:Props) {
 
   const id = useId();
 
@@ -44,7 +43,7 @@ function ProductSearchBox({onSearch, searchTerm, isInstantSearch}:Props) {
           type="search"
           placeholder="상품 이름 입력"
           defaultValue={searchTerm}
-          onChange={isInstantSearch ? handleChange : undefined}
+          onChange={handleChange}
           />
       </div>
     </form>

@@ -1,0 +1,98 @@
+.NoteForm {
+  display: flex;
+  flex-flow: column;
+  gap: 20px;
+  inline-size: 100%;
+  box-sizing: border-box;
+  padding: 28px;
+  border: 1px solid var(--note-border);
+  border-radius: var(--note-radius);
+  background: var(--note-surface);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 35%);
+
+  .formControl {
+    display: flex;
+    flex-flow: column;
+    gap: 8px;
+    color: var(--note-text);
+
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--note-text-muted);
+
+      &+* {
+        font-size: 15px;
+        background: var(--note-bg);
+        border: 1px solid var(--note-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        color: inherit;
+        transition: border-color 0.2s, box-shadow 0.2s;
+
+        &:focus {
+          outline: none;
+        }
+
+        &:focus-visible {
+          border-color: var(--note-accent);
+          box-shadow: 0 0 0 3px rgb(139 124 246 / 25%);
+        }
+      }
+    }
+
+    textarea {
+      min-block-size: 9rem;
+      max-block-size: 16rem;
+      line-height: 1.6;
+      resize: vertical;
+      color-scheme: dark;
+      scrollbar-width: thin;
+      scrollbar-color: var(--note-border) transparent;
+    }
+
+    select {
+      cursor: pointer;
+    }
+  }
+
+  .buttonGroup {
+    display: flex;
+    gap: 10px;
+    margin-block-start: 4px;
+
+    button {
+      flex: 1;
+      padding: 13px;
+      border: 1px solid var(--note-border);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--note-text-muted);
+      font-size: 15px;
+      font-weight: 700;
+      transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+
+      &:hover:not(:disabled) {
+        color: var(--note-text);
+        background: var(--note-surface-hover);
+      }
+
+      &[type='submit'] {
+        border-color: var(--note-accent);
+        background: var(--note-accent);
+        color: #fff;
+
+        &:hover:not(:disabled) {
+          background: var(--note-accent-hover);
+          border-color: var(--note-accent-hover);
+        }
+      }
+
+      &[type='button']:hover:not(:disabled) {
+        color: var(--note-danger);
+        border-color: var(--note-danger);
+        background: rgb(242 109 109 / 8%);
+      }
+    }
+  }
+}

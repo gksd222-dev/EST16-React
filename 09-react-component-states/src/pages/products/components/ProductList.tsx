@@ -1,28 +1,21 @@
-import type { ProductType } from "../types/product"
-import ProductItem from "./ProductItem"
+import type { ProductType } from "../types/product";
+import ProductItem from "./ProductItem";
 
 
-
-interface Prop{
-  products: ProductType[] 
+interface Props {
+  products:ProductType[];
 }
 
 
-function ProductList({products}:Prop) {
-  
-  
+function ProductList({products}:Props) {
   return (
     <ul className="ProductList">
       {
-        products.map((product,index)=>(
-          <ProductItem 
-            key={product.id}
-            product={product}
-            index={index}
-          />
+        products.map((product)=>(
+          <ProductItem key={product.id} product={product}/>
         ))
       }
     </ul>
-  )
+  );
 }
-export default ProductList
+export default ProductList;
