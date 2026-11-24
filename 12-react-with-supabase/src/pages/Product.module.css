@@ -1,0 +1,68 @@
+.container {
+  flex: 1;
+  background-color: white;
+  color: #404040;
+
+  & img {
+    width: 100%;
+  }
+
+  
+  & ul {
+    display: grid;
+    place-items: center;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem;
+    padding: 2.5rem;
+
+    & li {
+      & a {
+        max-width: 30vw;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+      }
+    }
+
+    .description {
+      font-size: 0.8rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .price {
+      color: gray;
+      text-decoration: line-through;
+    }
+
+    .discount {
+      font-size: 1.2rem;
+      color: red;
+      margin-right: 0.6rem;
+    }
+
+    .realPrice {
+      font-weight: bold;
+    }
+  }
+}
+
+.invalid {
+  flex: 1;
+  background-color: white;
+  color: #404040;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  h3 {
+    font-size: 30px;
+    margin-bottom: 4rem;
+  }
+
+  a {
+    text-decoration: underline;
+  }
+}

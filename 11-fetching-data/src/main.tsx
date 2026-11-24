@@ -1,7 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/styles/main.css';
-import Parent from './components/layoutEffect/Parent';
+// import Parent from './components/layoutEffect/Parent';
+import App from './components/context/App';
 //import Parent from './components/effectAndRef/Parent';
 //import UserList from './components/effect/Effect';
 // import Parent from './components/ref/Parent';
@@ -16,7 +17,9 @@ if (container) {
       
       {/* <UserList /> */}
       
-      <Parent />
+      {/* <Parent /> */}
+
+      <App />
 
     </StrictMode>
   );

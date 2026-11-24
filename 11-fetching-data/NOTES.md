@@ -281,3 +281,274 @@ return <div ref={boxRef} style={{ padding: '20px', fontSize: '24px' }}>이 박�
 | 값이 바뀔 때마다 DOM 작업(자동 스크롤) | `useEffect(fn, [값])` + ref |
 | 그리기 전에 크기·위치 측정(깜빡임 방지) | `useLayoutEffect` |
 | props가 같으면 리렌더링 건너뛰기 | `memo(컴포넌트)` |
+
+
+---
+
+---
+
+# 📗 context · hook 디렉터리 정리 (`src/components/context/`, `src/hook/`)
+
+## 0. 전체 구조: 파일 관계도
+
+**Context 2개(User, Theme)를 App에서 감싸고, 3단계 아래 GrandChild가 props 없이 꺼내 씁니다.**
+
+```tsx
+// main.tsx
+import App from './components/context/App';   // 지금 실행 중
+//import UserList from './components/effect/Effect';
+```
+
+```
+App.tsx                      ← state(username) 보관 + Provider 2개로 감싸기
+ └─ <ThemeProvider>          ← ThemeContext.tsx (themes.ts의 light/dark 사용)
+     └─ <UserContext value>  ← UserContext.tsx
+         └─ Parent.tsx       ← props 없음, 그냥 통과
+             └─ Child.tsx    ← props 없음, 그냥 통과
+                 └─ GrandChild.tsx  ← useUserContext() + useTheme()로 직접 꺼내 씀
+```
+
+| 위치 | 파일 | 역할 |
+| --- | --- | --- |
+| `context/` | `UserContext.tsx` | User 컨텍스트 **객체와 타입만** 만듦 |
+| `context/` | `ThemeContext.tsx` | 컨텍스트 + Provider 컴포넌트 + `useTheme` 훅을 **한 파일에** |
+| `context/` | `themes.ts` | 라이트/다크 테마 값 객체와 `ThemeType` |
+| `context/` | `App.tsx` | 상태를 만들고 Provider로 감싸는 최상위 |
+| `context/` | `Parent.tsx`, `Child.tsx` | 중간 컴포넌트 (prop drilling이 없다는 걸 보여 주는 용도) |
+| `context/` | `GrandChild.tsx` | 컨텍스트를 실제로 사용하는 곳 |
+| `hook/` | `useUserContext.tsx` | `use(UserContext)` + null 체크를 감싼 커스텀 훅 |
+| `hook/` | `useUsers.ts` | fetch + 로딩/에러 상태를 감싼 커스텀 훅 |
+
+- 컨텍스트를 쓰면 `Parent`, `Child`가 `username`을 받아서 넘겨 줄 필요가 없습니다. 이것이 **prop drilling 해결**입니다.
+- 두 컨텍스트는 같은 일을 **두 가지 방식으로** 구성했습니다. User는 파일을 나눴고(`context/` + `hook/`), Theme은 한 파일에 모았습니다.
+
+---
+
+## 1. 컨텍스트 만들기: `UserContext.tsx`
+
+**`createContext<타입 | null>(null)`로 빈 통로를 만들고, 값은 Provider에서 채웁니다.**
+
+```tsx
+export interface UserContextType {
+  username: string;
+  setUsername: (name: string) => void;
+}
+
+export const UserContext = createContext<UserContextType | null>(null);
+```
+
+- 기본값을 `null`로 두고 타입에 `| null`을 붙입니다. Provider 밖에서 쓰면 `null`이 나옵니다.
+- 값(`username`)뿐 아니라 **바꾸는 함수(`setUsername`)도 같이 넣으면** 자식이 부모 상태를 바꿀 수 있습니다.
+
+---
+
+## 2. Provider로 감싸기: `App.tsx`
+
+**상태는 App이 갖고, `<UserContext value={...}>`로 아래 모든 컴포넌트에 공급합니다.**
+
+```tsx
+const [username, setUsername] = useState('안경찬');
+
+return (
+  <ThemeProvider>
+    <UserContext value={{ username, setUsername }}>   {/* React 19: .Provider 생략 */}
+      <Parent />
+      <button type="button" onClick={() => setUsername('신재훈')}>사용자 변경</button>
+    </UserContext>
+  </ThemeProvider>
+);
+```
+
+- ⭐ React 19부터는 `<UserContext.Provider value>` 대신 `<UserContext value>`로 바로 씁니다.
+- Provider는 **중첩**할 수 있습니다. 바깥 Theme, 안쪽 User 순서는 상관없습니다(서로 의존하지 않기 때문).
+- 버튼으로 `setUsername`을 호출하면 value가 바뀌고, 그 값을 읽는 `GrandChild`가 다시 렌더링됩니다.
+
+> ⚠️ 코드 확인: `console.log(UserContext)`는 컨텍스트 객체 구조를 보려고 넣은 디버깅 코드라서 정리할 때 지워도 됩니다.
+>
+
+---
+
+## 3. 컨텍스트 꺼내 쓰기: `GrandChild.tsx`
+
+**컨텍스트 읽는 방법이 3단계로 발전합니다. 최종은 커스텀 훅 한 줄입니다.**
+
+### ① 꺼내는 방법 비교
+
+| # | 방법 | 코드 | 특징 |
+| --- | --- | --- | --- |
+| 1 | React 18 | `useContext(UserContext)` | 훅 규칙 적용(조건문 안 X) |
+| 2 | React 19 | `use(UserContext)` | 조건문 안에서도 호출 가능, Promise도 받음 |
+| 3 | ⭐ 커스텀 훅 | `useUserContext()` | null 체크까지 감싸서 사용처가 깔끔 |
+
+```tsx
+// 2번 방식: 쓰는 곳마다 null 체크가 필요함
+// const ctx = use(UserContext);
+// if (!ctx) return;
+// const { username } = ctx;
+
+// 3번 방식: 최종
+const { username } = useUserContext();
+const { theme, toggleTheme } = useTheme();
+
+return (
+  <div style={{
+    background: theme.colors.background,
+    color: theme.colors.text,
+    padding: theme.spacing.md,
+  }}>
+    <p>안녕하세요, <strong>{username}</strong>님!</p>
+    <button type="button" onClick={toggleTheme}>Change Theme</button>
+  </div>
+);
+```
+
+- `use()`는 컨텍스트뿐 아니라 **Promise도 받습니다**(`then`처럼 결과값을 꺼냄). 이때는 `<Suspense>`가 필요합니다.
+- `Parent.tsx`, `Child.tsx`는 자식만 렌더링하고 아무 props도 넘기지 않습니다.
+
+---
+
+## 4. Provider 컴포넌트 패턴: `ThemeContext.tsx` + `themes.ts`
+
+**컨텍스트 + 상태 + 훅을 한 파일에 묶고, 바깥에는 `ThemeProvider`와 `useTheme`만 내보냅니다.**
+
+### ① `themes.ts`: 테마 값
+
+```ts
+export const lightTheme = {
+  name: 'light',
+  colors: { background: '#ffffff', text: '#000000', primary: '#007bff' },
+  spacing: { sm: '8px', md: '16px', lg: '24px' },
+};
+export const darkTheme = { /* 같은 모양, 색만 다름 */ };
+
+export type ThemeType = typeof lightTheme;   // 값에서 타입을 뽑아냄
+```
+
+- `typeof 값`으로 타입을 만들면 인터페이스를 따로 쓸 필요가 없습니다. 다크 테마도 같은 모양이어야 타입이 맞습니다.
+
+### ② ⭐ `ThemeContext.tsx`: Provider + 훅
+
+```tsx
+const ThemeContext = createContext<ThemeContextType | null>(null);   // export 안 함
+
+export const useTheme = () => {
+  const ctx = use(ThemeContext);
+  if (!ctx) throw new Error('ThemeProvider가 필요합니다.');
+  return ctx;
+};
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [themeName, setThemeName] = useState<'light' | 'dark'>('light');
+  const theme = themeName === 'light' ? lightTheme : darkTheme;   // 상태는 이름만, 객체는 계산
+
+  const toggleTheme = () => {
+    setThemeName((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  return <ThemeContext value={{ theme, toggleTheme }}>{children}</ThemeContext>;
+}
+```
+
+- 컨텍스트 객체를 `export`하지 않아서 **반드시 `useTheme`로만** 접근하게 됩니다.
+- 상태에는 `'light' | 'dark'` 문자열만 두고, 테마 객체는 렌더링할 때 계산합니다(파생 값).
+- `children`을 받아 그대로 렌더링하므로 `App`에서 `<ThemeProvider>...</ThemeProvider>`로 감쌀 수 있습니다.
+- `// eslint-disable-next-line react-refresh/only-export-components`는 한 파일에서 컴포넌트와 훅을 같이 export해서 생기는 Fast Refresh 경고를 끄는 주석입니다.
+
+### ③ User 방식 vs Theme 방식
+
+| 구분 | User | Theme |
+| --- | --- | --- |
+| 컨텍스트 위치 | `context/UserContext.tsx` | `context/ThemeContext.tsx` |
+| 상태 위치 | `App.tsx` | `ThemeProvider` 내부 |
+| 꺼내는 훅 | `hook/useUserContext.tsx` (분리) | `useTheme` (같은 파일) |
+| Provider 사용 | `<UserContext value={...}>` | `<ThemeProvider>` |
+| Provider 밖에서 쓰면 | `throw` | `throw` |
+
+---
+
+## 5. 커스텀 훅: `hook/useUserContext.tsx`
+
+**`use` + null 체크를 함수로 감싸면 반환 타입에서 `null`이 사라집니다.**
+
+```tsx
+function useUserContext() {
+  const ctx = use(UserContext);
+  if (!ctx) throw new Error('useUserContext는 <UserContext> 안에서 사용해야 합니다.');
+  return ctx;   // 타입: UserContextType (null 아님)
+}
+```
+
+- `throw`한 뒤에는 TypeScript가 `ctx`를 `UserContextType`으로 좁혀 줍니다(타입 내로잉).
+- 이름이 `use`로 시작해야 React가 훅으로 인식하고 훅 규칙 검사가 적용됩니다.
+
+> ⚠️ 코드 확인: 이 파일에는 JSX가 없어서 확장자를 `.ts`로 해도 됩니다(`useUsers.ts`처럼).
+>
+
+---
+
+## 6. 커스텀 훅으로 분리: `hook/useUsers.ts` + `effect/Effect.tsx`
+
+**전에 `Effect.tsx` 안에 있던 fetch 로직(📘 3-③)을 `useUsers`로 옮기고, 컴포넌트는 화면만 그립니다.**
+
+### ① `useUsers.ts`: 로직 담당
+
+```ts
+function useUsers() {
+  const [users, setUsers] = useState<User[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('https://jsonplaceholder.typicode.com/users', { signal: controller.signal })
+      .then((res) => { if (!res.ok) throw new Error('네트워크 응답 오류'); return res.json(); })
+      .then((data: User[]) => { setUsers(data); setLoading(false); })
+      .catch((err: Error) => {
+        if (err.name === 'AbortError') return;
+        setLoading(false);
+        setError(err);
+      });
+    return () => controller.abort();
+  }, []);
+
+  return { users, loading, error };   // 컴포넌트가 필요한 3가지만 객체로 반환
+}
+```
+
+### ② `Effect.tsx`: 화면 담당
+
+```tsx
+import useUsers from '@/hook/useUsers';
+
+function UserList() {
+  const { loading, error, users } = useUsers();   // 수십 줄 → 한 줄
+
+  if (loading) return <p>로딩 중....</p>;
+  if (error) return <p>❌ 에러 발생!!! : {error.message} ❌</p>;
+
+  return (
+    <ul>
+      {users && users.map((user) => <li key={user.id}>{user.name} ({user.email})</li>)}
+    </ul>
+  );
+}
+```
+
+- 바뀐 것은 **위치뿐**이고 동작은 똑같습니다. `useState`, `useEffect` import도 `Effect.tsx`에서 사라졌습니다.
+- 객체로 반환하므로 `const { users } = useUsers()`처럼 필요한 것만, 순서 상관없이 꺼낼 수 있습니다.
+- 커스텀 훅은 **상태를 공유하지 않습니다**. 두 컴포넌트가 `useUsers()`를 부르면 각각 따로 fetch합니다. 같은 데이터를 공유하려면 Context가 필요합니다.
+- `@/hook/...`은 `src/`를 가리키는 경로 별칭이라 `../../`를 쓰지 않아도 됩니다.
+
+---
+
+## 🧷 한 줄 요약: 상황별 도구 고르기
+
+| 하고 싶은 것 | 도구 |
+| --- | --- |
+| 여러 단계 아래로 값 전달(prop drilling 피하기) | `createContext` + `<Context value>` |
+| 컨텍스트 값 읽기 (React 19) | `use(Context)` |
+| Provider 밖에서 쓰는 실수 막기 + null 제거 | 커스텀 훅 안에서 `if (!ctx) throw` |
+| 상태까지 감춘 재사용 Provider | `XxxProvider({ children })` + `useXxx` 한 파일 |
+| 값 객체에서 타입 뽑기 | `type T = typeof 값` |
+| 컴포넌트에서 fetch 로직 떼어 내기 | 커스텀 훅(`useUsers`)이 `{ data, loading, error }` 반환 |
+| 여러 컴포넌트가 같은 상태 공유 | 커스텀 훅 ❌ → Context ⭕ |

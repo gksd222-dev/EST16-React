@@ -1,0 +1,32 @@
+.header{
+  background-color: black;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2rem;
+
+  ul{
+    display: flex;
+    gap:2rem;
+  
+  }
+}
+
+
+
+a.active{
+  display: inline-block;
+  color:rgb(255, 132, 0);
+  position: relative;
+
+  &::before{
+    content: '';
+    width: 8px;
+    height: 8px;
+    background-color: orange;
+    border-radius: 50%;
+    position: absolute;
+    left: -8px;
+    top: -6px;
+  }
+}
