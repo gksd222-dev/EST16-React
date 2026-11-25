@@ -344,3 +344,638 @@ function Register() {
 | 마운트 시 DB 데이터 가져오기 | `useEffect` 안에 `async` 함수 선언 후 호출 |
 | Supabase 행 타입 | `Tables<'테이블명'>` |
 | 파일마다 겹치지 않는 클래스명 | CSS Module `import S from './X.module.css'` |
+
+---
+
+---
+
+# 📘 auth · hook 디렉터리 정리 (`src/components/auth/`, `src/hook/`)
+
+## 0. 전체 구조: `App.tsx` → `AuthProvider` → `RouterProvider`
+
+**로그인 정보(user)는 `AuthProvider`가 Context로 앱 전체에 공급하고, 필요한 곳에서 `useAuth()`로 꺼내 씁니다.**
+
+```tsx
+// App.tsx
+function App() {
+  return (
+    <div className={S.app}>
+      <AuthProvider>                                            {/* user, isAuth, logout 공급 */}
+        <RouterProvider navigation={<Header />} routes={routes} />
+        <Footer />
+      </AuthProvider>
+    </div>
+  );
+}
+```
+
+```
+App.tsx
+ └─ AuthProvider            ← AuthContext 공급 (user, isAuth, logout)
+     ├─ RouterProvider      ← RouterContext 공급 (currentPath, setHistoryRoute)
+     │   ├─ <Header />      ← useAuth()  : 인사말 · 메뉴 숨김 · 로그아웃
+     │   └─ 페이지
+     │       ├─ <Login />    ← supabase.auth.signInWithPassword + setHistoryRoute
+     │       ├─ <Register /> ← supabase.auth.signUp + storage.upload
+     │       └─ <Product />  ← useProducts() 커스텀 훅
+     └─ <Footer />
+```
+
+| 위치 | 파일 | 함수 | 역할 |
+| --- | --- | --- | --- |
+| `components/auth/` | `AuthProvider.tsx` | `AuthProvider()`, `useAuth()` | 로그인 유저 상태 공급 + 꺼내 쓰는 훅 |
+| `components/Layout/` | `Header.tsx` | `Header()` | 로그인 여부에 따라 메뉴 · 인사말 · 로그아웃 |
+| `hook/` | `useProducts.ts` | `useProducts()` | 상품 목록 가져오기 로직을 훅으로 분리 |
+| `pages/` | `Login.tsx` | `Login()` | 이메일 · 비밀번호 로그인 |
+| `pages/` | `Register.tsx` | `Register()` | 회원가입 + 프로필 이미지 업로드 |
+| `pages/` | `Product-teach.tsx` | `Product()` | 컴포넌트 안에서 직접 fetch (강사 버전) |
+| `pages/` | `Product.tsx` | `Product()` | 커스텀 훅 + GSAP (리팩터링 버전) |
+
+- Provider 순서가 중요합니다. `Header`는 RouterProvider 안에 있고, 그 바깥을 `AuthProvider`가 감싸고 있어서 `useAuth()`를 쓸 수 있습니다.
+
+---
+
+## 1. ⭐ 인증 Context: `auth/AuthProvider.tsx`
+
+**`createContext` → Provider 컴포넌트 → `useAuth` 훅, 3단 구조로 만듭니다.**
+
+```tsx
+// ① 타입 정의
+interface User {
+  id: string;
+  email: string;
+  nickname: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  isAuth: boolean;
+  logout: () => void;
+}
+
+// ② Context 만들기 (기본값 null)
+const AuthContext = createContext<AuthContextType | null>(null);
+
+// ③ Provider 컴포넌트
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+
+  // 마운트 시 한 번: 현재 로그인 유저 확인
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {      // 중첩 구조 분해
+      if (user) {
+        setUser({
+          id: user.id,
+          email: user.email!,
+          nickname: user.user_metadata.nickname ?? user.email!.split('@')[0],  // 없으면 이메일 앞부분
+        });
+      }
+    });
+  }, []);
+
+  // 로그아웃: supabase 세션 삭제 → 상태 비우기
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  return (
+    <AuthContext value={{ user, isAuth: !!user, logout }}>   {/* React 19: .Provider 생략 가능 */}
+      {children}
+    </AuthContext>
+  );
+}
+
+// ④ 꺼내 쓰는 커스텀 훅
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth는 AuthProvider 안에서 사용해야 합니다.');
+  return ctx;                                               // 여기서부터 타입이 null 아님
+}
+```
+
+### ① 함수 구조
+
+| 순서 | 구역 | 코드 |
+| --- | --- | --- |
+| ① | 타입 | `User`, `AuthContextType` |
+| ② | Context 생성 | `createContext<... \| null>(null)` |
+| ③-1 | 상태 | `user` (처음엔 `null`) |
+| ③-2 | 부수 효과 | `useEffect` → `supabase.auth.getUser()` |
+| ③-3 | 동작 함수 | `logout` → `signOut()` + `setUser(null)` |
+| ③-4 | JSX 반환 | `<AuthContext value={...}>{children}</AuthContext>` |
+| ④ | 훅 | `useAuth()`: null이면 `throw` |
+
+### ② 파생 값 `isAuth: !!user`
+
+| `user` | `!user` | `!!user` |
+| --- | --- | --- |
+| `{ id, email, ... }` | `false` | `true` |
+| `null` | `true` | `false` |
+
+- `isAuth`를 state로 따로 만들지 않습니다. `user`에서 **계산할 수 있는 값은 계산**합니다. 그래서 `setUser(null)` 한 번으로 `isAuth`도 같이 `false`가 됩니다.
+
+### ③ supabase.auth 함수 정리
+
+| 함수 | 하는 일 | 사용 위치 |
+| --- | --- | --- |
+| `signUp({ email, password, options: { data } })` | 회원가입 (`data`는 `user_metadata`에 저장) | Register |
+| `signInWithPassword({ email, password })` | 로그인 → 세션을 localStorage에 저장 | Login |
+| `getUser()` | 현재 세션의 유저 조회 | AuthProvider |
+| `signOut()` | 세션 삭제 | AuthProvider `logout` |
+
+- `user_metadata.nickname`은 Register에서 `options.data.nickname`으로 넣은 값입니다.
+- `??`는 왼쪽이 `null`/`undefined`일 때만 오른쪽을 씁니다 (`||`와 달리 빈 문자열은 그대로 둠).
+
+> ⚠️ 코드 확인: `getUser()`는 **마운트될 때 한 번만** 실행됩니다. Login에서 새로고침 없이 `setHistoryRoute('/')`로 이동하면 AuthProvider는 그대로라서 **user가 `null`인 채로 남고, Header 인사말과 로그아웃 버튼이 안 나옵니다**(새로고침해야 보임). `useEffect` 안에서 `supabase.auth.onAuthStateChange((event, session) => setUser(...))`를 구독하면 로그인 · 로그아웃이 자동으로 반영됩니다. 또 `logout`은 async 함수라 타입을 `() => Promise<void>`로 쓰는 게 정확합니다.
+>
+
+---
+
+## 2. ⭐ 커스텀 훅: `hook/useProducts.ts`
+
+**컴포넌트에 있던 "상태 + useEffect + fetch" 묶음을 `use`로 시작하는 함수로 빼고, 필요한 값만 객체로 반환합니다.**
+
+```ts
+type ProductRow = Database['public']['Tables']['products']['Row'];          // 테이블 한 행 전체
+type ProductItem = Pick<ProductRow, 'id' | 'name' | 'price' | 'image_url' | 'sale' | 'description'>;  // 필요한 컬럼만
+
+function useProducts() {
+  // ① 상태
+  const [products, setProducts] = useState<ProductItem[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // ② 부수 효과: 데이터 요청
+  useEffect(() => {
+    let ignore = false;                                    // 늦게 도착한 응답 무시용 플래그
+
+    const fetchProducts = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, price, sale, image_url, description');   // 필요한 컬럼만 요청
+
+      if (ignore) return;                                  // 이미 정리됐으면 state 안 건드림
+
+      if (data) setProducts(data);
+      setLoading(false);
+
+      if (error) {
+        console.warn('상품 정보 불러오기 실패', error);
+        return null;
+      }
+    };
+
+    fetchProducts();
+    return () => { ignore = true; };                       // cleanup
+  }, []);
+
+  // ③ 반환
+  return { products, loading };
+}
+```
+
+### ① 함수 구조
+
+| 단계 | 하는 일 |
+| --- | --- |
+| 입력 | 없음 |
+| 처리 | `products`, `loading` 상태 + `useEffect`로 Supabase 요청 |
+| 출력 | `{ products, loading }` 객체 |
+
+### ② `ignore` 플래그 (경쟁 상태 방지)
+
+```
+마운트 → fetchProducts() 요청 출발
+   ↓ (응답 오기 전에 페이지 이동 = 언마운트, 또는 StrictMode 재실행)
+cleanup 실행 → ignore = true
+   ↓
+응답 도착 → if (ignore) return   ← 사라진 컴포넌트의 state를 건드리지 않음
+```
+
+- 개발 모드 `StrictMode`는 effect를 **마운트 → 정리 → 다시 마운트** 순서로 두 번 실행합니다. 첫 번째 요청의 응답은 `ignore`로 버려지고, 두 번째 요청의 응답만 반영됩니다.
+
+### ③ Supabase 타입 고르기
+
+| 쓰임 | 타입 |
+| --- | --- |
+| 조회 (행 전체) | `Tables<'products'>` = `Database['public']['Tables']['products']['Row']` |
+| 생성 | `TablesInsert<'products'>` |
+| 수정 | `TablesUpdate<'products'>` |
+| 일부 컬럼만 | `Pick<Row, 'id' \| 'name' ...>` |
+
+- `select('*')` 대신 컬럼을 콕 집어 요청하면 받는 데이터 양도 줄고, 타입(`ProductItem`)과도 딱 맞습니다.
+- 훅 이름은 반드시 `use`로 시작해야 React가 훅으로 인식합니다(훅 규칙 검사 대상).
+
+> ⚠️ 코드 확인: `error` 검사가 `setLoading(false)` **뒤**에 있어서 순서가 어색합니다. `if (error) { ...; setLoading(false); return; }`를 먼저 두는 게 읽기 쉽습니다. `return null`은 async 함수의 반환값을 아무도 안 쓰므로 `return`만 있으면 됩니다.
+>
+
+---
+
+---
+
+# 📗 pages · Layout 정리 2 (`src/pages/`, `src/components/Layout/`)
+
+## 1. `Layout/Header.tsx`: 로그인 상태에 따라 바뀌는 메뉴
+
+**`useAuth()`로 `user`, `isAuth`, `logout`을 꺼내서 ① 메뉴 거르기 ② 인사말 ③ 로그아웃 버튼에 씁니다.**
+
+```tsx
+function Header() {
+  // ① Context에서 꺼내기
+  const { user, isAuth, logout } = useAuth();
+
+  // ② 파생 값: 로그인했으면 '로그인', '회원가입' 메뉴 숨기기
+  const hideWhenLoggedIn = ['로그인', '회원가입'];
+  const visibleRoutes = routes.filter(
+    ({ title }) => !(isAuth && hideWhenLoggedIn.includes(title))
+  );
+
+  // ③ 렌더링
+  return (
+    <header className={S.header}>
+      <h1><img width={100} src="/logo-white.png" alt="" /></h1>
+      <nav>
+        <h2 className="a11y-hidden">메인 메뉴</h2>
+        {user && <p className={S.greeting}>{user.nickname}님 반갑습니다 😄</p>}
+        <ul>
+          {visibleRoutes.map(({ path, title }) => (
+            <li key={path}><NavLink to={path}>{title}</NavLink></li>
+          ))}
+          {isAuth && (                                       // 로그인했을 때만
+            <li>
+              <a href="#" onClick={(e) => {
+                e.preventDefault();
+                if (confirm('너... 진짜 떠날꺼야? 넌 예쁘지 않아 죄를 지었어')) {
+                  logout();                                  // signOut + setUser(null)
+                }
+              }}>로그아웃</a>
+            </li>
+          )}
+        </ul>
+      </nav>
+    </header>
+  );
+}
+```
+
+### ① 함수 구조
+
+| 순서 | 구역 | 코드 |
+| --- | --- | --- |
+| ① | 외부 값 | `useAuth()` → `user`, `isAuth`, `logout` |
+| ② | 파생 값 | `visibleRoutes = routes.filter(...)` |
+| ③ | JSX 반환 | 인사말 + 메뉴 + 로그아웃 |
+
+### ② filter 조건 풀어 읽기
+
+| `isAuth` | title이 로그인/회원가입? | `isAuth && includes` | `!(...)` → 보임? |
+| --- | --- | --- | --- |
+| `false` | 예 | `false` | ✅ 보임 |
+| `true` | 예 | `true` | ❌ 숨김 |
+| `true` | 아니오 | `false` | ✅ 보임 |
+
+### ③ 로그아웃 흐름
+
+```
+로그아웃 클릭 → e.preventDefault() → confirm 확인
+ → logout()  (AuthProvider)
+     → supabase.auth.signOut()   세션 삭제
+     → setUser(null)             user = null, isAuth = false
+ → Context를 쓰는 Header 리렌더링 → 인사말 사라짐 · 로그인/회원가입 메뉴 다시 보임
+```
+
+> ⚠️ 코드 확인: 이동이 아니라 동작(로그아웃)을 하는 요소에는 `<a href="#">`보다 `<button type="button">`이 의미에 맞습니다(접근성). `S.greeting`은 `Header.module.css`에 없는 클래스입니다. 로그아웃 후에는 현재 페이지에 그대로 머무르므로, 필요하면 `history.pushState(null, '', '/')` + `setHistoryRoute('/')`로 메인으로 보냅니다.
+>
+
+---
+
+## 2. ⭐ `Login.tsx`: 상태 → 이벤트 → 통신 → 리다이렉트
+
+**폼 처리 4단계(상태 설정 → 이벤트 바인딩 → supabase 통신 → redirect)를 그대로 코드로 옮긴 페이지입니다.**
+
+```tsx
+function Login() {
+  const userId = useId();
+  const pwId = useId();
+
+  // 1. 상태 설정하기
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { setHistoryRoute } = useContext(RouterContext)!;     // 페이지 이동 함수
+
+  // 2. 이벤트 바인딩하기 (onSubmit)
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    // 3. supabase 통신하기
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      console.log(error);
+      setError(error.message);
+    } else {
+      // 4. redirect 하기
+      Swal.fire({
+        icon: 'success',
+        title: '로그인 성공!',
+        text: '확인을 누르면 메인 페이지로 이동합니다.',
+        iconColor: '#FD98AF',
+        confirmButtonColor: '#FD98AF',
+      }).then(() => {
+        history.pushState(null, '', '/');   // 주소 바꾸기
+        setHistoryRoute('/');                 // 화면 바꾸기
+      });
+    }
+  };
+
+  return (
+    <div className={S.container}>
+      <form onSubmit={handleLogin}>
+        <input id={userId} type="email" value={email}
+               onChange={(e) => setEmail(e.target.value)} />       {/* controlled */}
+        <input id={pwId} type="password" value={password}
+               onChange={(e) => setPassword(e.target.value)} />
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        <button type="submit">로그인</button>
+        <a href="" onClick={(e) => {
+          e.preventDefault();
+          history.pushState(null, '', '/Register');
+          setHistoryRoute('/Register');
+        }}>아직도 효블리 회원이 아니세요?</a>
+      </form>
+    </div>
+  );
+}
+```
+
+### ① 함수 구조 (4단계)
+
+| 단계 | 구역 | 코드 |
+| --- | --- | --- |
+| 1 | 상태 | `email`, `password`, `error` + `useContext(RouterContext)` |
+| 2 | 이벤트 바인딩 | `<form onSubmit={handleLogin}>`, input `onChange` |
+| 3 | 통신 | `await supabase.auth.signInWithPassword(...)` |
+| 4 | 리다이렉트 | `Swal.fire().then(() => pushState + setHistoryRoute)` |
+
+### ② controlled component
+
+| 연결 | 역할 |
+| --- | --- |
+| `value={email}` | state → input (화면에 보이는 값 = state) |
+| `onChange={(e) => setEmail(e.target.value)}` | input → state (타이핑하면 state 갱신) |
+
+### ③ 페이지 이동 2가지 방식 비교
+
+| 방식 | 코드 | 특징 |
+| --- | --- | --- |
+| 새로고침 이동 | `history.pushState(...)` + `location.reload()` | 앱 전체가 다시 시작 → AuthProvider `getUser()`도 다시 실행 |
+| SPA 이동 | `history.pushState(...)` + `setHistoryRoute(...)` | 새로고침 없음 → 빠르지만 Context 상태는 그대로 |
+
+- `await`는 반드시 **async 함수 안**에서만 씁니다. 컴포넌트 본문에 바로 쓰면 에러가 나고, 렌더링할 때마다 요청이 나갑니다.
+- 반환값 `{ error }`가 state `error`와 이름이 같아서 핸들러 안에서는 **바깥 state를 가립니다**(shadowing). `error: loginError`처럼 이름을 바꿔 받으면 헷갈리지 않습니다.
+
+> ⚠️ 코드 확인: SPA 방식으로 이동하기 때문에 AuthProvider의 `user`가 갱신되지 않아서 **로그인 직후 Header에 인사말과 로그아웃이 안 보입니다**(1장 AuthProvider 참고 → `onAuthStateChange`로 해결). 다시 시도할 때 이전 에러 메시지가 남지 않도록 핸들러 처음에 `setError(null)`을 넣으면 좋습니다.
+>
+
+---
+
+## 3. `Register.tsx`: 회원가입 + 프로필 이미지 업로드
+
+**검증 → `signUp` → (이미지 있으면) `storage.upload` → 성공 알림 → 로그인 페이지로 이동 순서로 진행하고, 단계마다 실패하면 바로 `return`합니다.**
+
+```tsx
+function Register() {
+  // ① 상태 (controlled component)
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);       // 업로드할 파일
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null); // 미리보기 URL
+  const [error, setError] = useState<string | null>(null);
+
+  // ② 제출 핸들러
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+
+    // ②-1 검증
+    if (password !== passwordConfirm) {
+      setError('비밀번호가 일치하지 않습니다.');
+      return;
+    }
+
+    // ②-2 회원가입 (닉네임은 user_metadata에)
+    const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { nickname } },
+    });
+
+    if (signUpError || !user) {
+      setError(signUpError?.message || '회원가입에 실패했습니다.');
+      return;
+    }
+
+    // ②-3 프로필 이미지 업로드 (파일명 = 유저 id.확장자)
+    if (avatarFile) {
+      const fileExt = avatarFile.name.split('.').pop();     // 'cat.png' → 'png'
+      const filePath = `${user.id}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')                                    // 버킷 이름
+        .upload(filePath, avatarFile, { upsert: true });    // 같은 이름이면 덮어쓰기
+
+      if (uploadError) {
+        setError('이미지 업로드에 실패했습니다.');
+        return;
+      }
+    }
+
+    // ②-4 성공 → 로그인 페이지로
+    Swal.fire({ icon: 'success', title: '로그인 성공!', ... }).then(() => {
+      history.pushState(null, '', './Login');
+      location.reload();
+    });
+  };
+
+  // ③ 렌더링 (파일 input 부분)
+  return (
+    <input type="file" accept="image/*" onChange={(e) => {
+      const file = e.target.files?.[0] ?? null;            // 선택한 첫 파일
+      setAvatarFile(file);
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => setAvatarPreview(reader.result as string);  // base64 URL
+        reader.readAsDataURL(file);
+      } else {
+        setAvatarPreview(null);
+      }
+    }} />
+    // {avatarPreview && <img src={avatarPreview} />}
+  );
+}
+```
+
+### ① 함수 구조
+
+| 순서 | 구역 | 코드 |
+| --- | --- | --- |
+| ① | 상태 | 입력값 4개 + 파일 · 미리보기 + 에러 |
+| ②-1 | 검증 | 비밀번호 확인 불일치 → `return` |
+| ②-2 | 통신 1 | `supabase.auth.signUp` |
+| ②-3 | 통신 2 | `supabase.storage.from('avatars').upload` |
+| ②-4 | 리다이렉트 | `Swal` → `pushState` + `reload` |
+| ③ | JSX | 폼 + 파일 미리보기 + 에러 메시지 |
+
+### ② early return 패턴
+
+```
+검증 실패? ── yes → setError → return
+   │no
+signUp 실패? ── yes → setError → return
+   │no
+업로드 실패? ── yes → setError → return
+   │no
+성공 처리
+```
+
+- `if-else`를 깊게 중첩하지 않고 **실패하면 바로 빠져나가기** 때문에 코드가 위에서 아래로 읽힙니다.
+
+### ③ 파일 미리보기 (`FileReader`)
+
+| 코드 | 뜻 |
+| --- | --- |
+| `e.target.files?.[0]` | 선택한 파일 목록의 첫 번째 (없으면 `undefined`) |
+| `?? null` | `undefined` → `null`로 통일 (state 타입 `File \| null`) |
+| `reader.readAsDataURL(file)` | 파일을 `data:image/png;base64,...` 문자열로 읽기 시작 |
+| `reader.onloadend` | 다 읽으면 실행 → `reader.result`를 미리보기 state에 |
+
+- 파일 input은 보안상 `value`를 state로 제어할 수 없습니다. 그래서 `onChange`에서 파일만 꺼내 저장합니다.
+- 회원가입이 `email rate limit exceeded`(429)로 실패하면 코드 문제가 아닙니다. Supabase 기본 메일 서버의 **시간당 발송 제한**에 걸린 것입니다. 개발 중에는 대시보드에서 **Confirm email**을 꺼 두면 됩니다.
+
+> ⚠️ 코드 확인: Swal 제목이 `'로그인 성공!'`인데 `'회원가입 성공!'`이 맞습니다. `iconColor: '#FD98A'`는 5자리라 잘못된 색입니다(`'#FD98AF'`). 이동 경로 `'./Login'`은 상대 경로라 `'/Login'`으로 쓰는 게 안전합니다. 또 이메일 인증이 켜져 있으면 `signUp` 직후에는 세션이 없습니다. 그래서 `avatars` 버킷의 RLS 정책이 "로그인한 사용자만 업로드"라면 업로드가 실패할 수 있습니다.
+>
+
+---
+
+## 4. `Product-teach.tsx` vs `Product.tsx`: 커스텀 훅으로 리팩터링
+
+**같은 상품 목록인데, 데이터 로직을 컴포넌트 안에 두느냐(teach), 훅으로 빼느냐(Product)의 차이입니다.**
+
+### ① `Product-teach.tsx`: 컴포넌트 안에서 직접 가져오기
+
+```tsx
+function Product() {
+  supabase.from('products').select('*').then(console.log);    // 확인용
+
+  const [products, setProducts] = useState<Tables<'products'>[]>([]);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { data, error } = await supabase.from('products').select('*');
+      if (error) { console.error(error); return; }
+      setProducts(data);
+    };
+    fetchProducts();
+  }, []);
+
+  return (
+    <ul>
+      {products.map((p) => (
+        <li key={p.id}>
+          ...
+          <span className={S.realPrice}>{(p.price * (1 - p.sale / 100)).toLocaleString()}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### ② `Product.tsx`: 훅 + 로딩 + GSAP
+
+```tsx
+function Product() {
+  // ① 데이터는 훅에서
+  const { products, loading } = useProducts();
+
+  // ② 애니메이션 범위
+  const UL = useRef<HTMLUListElement>(null);
+
+  // ③ products가 바뀔 때마다 li 등장 애니메이션
+  useGSAP(() => {
+    gsap.fromTo('li', { y: 30, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.1 });
+  }, { dependencies: [products], scope: UL, revertOnUpdate: true });
+
+  // ④ 로딩 중이면 먼저 반환
+  if (loading) return <p>loading.....</p>;
+
+  // ⑤ 렌더링
+  return (
+    <div className={S.container}>
+      <ul ref={UL}>
+        {products && products.map((item) => (
+          <li key={item.id}>
+            ...
+            <span className={S.price}>{item.price.toLocaleString()}원</span>
+            <span className={S.realPrice}>
+              {(item.price - item.price * item.sale * 0.01).toLocaleString()}원
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### ③ 두 버전 비교
+
+| 항목 | `Product-teach.tsx` | `Product.tsx` |
+| --- | --- | --- |
+| 데이터 로직 위치 | 컴포넌트 안 `useEffect` | `useProducts()` 훅 |
+| 초기값 | `[]` (바로 map 가능) | `null` → `products &&`로 확인 |
+| 로딩 표시 | 없음 | `loading` → `<p>loading.....</p>` |
+| 늦은 응답 처리 | 없음 | `ignore` 플래그 |
+| 요청 컬럼 | `select('*')` | 필요한 6개만 |
+| 애니메이션 | 없음 | `useGSAP` + `stagger` |
+| 할인가 계산 | `price * (1 - sale/100)` | `price - price * sale * 0.01` (결과 같음) |
+
+### ④ `useGSAP` 옵션
+
+| 옵션 | 뜻 |
+| --- | --- |
+| `dependencies: [products]` | products가 바뀌면 애니메이션 다시 실행 (데이터가 도착해야 li가 생기니까) |
+| `scope: UL` | `'li'`를 UL 안에서만 찾음 (Header의 li는 안 움직임) |
+| `revertOnUpdate: true` | 다시 실행하기 전에 이전 애니메이션을 원래대로 되돌림 |
+
+- ⭐ 훅(`useProducts`, `useRef`, `useGSAP`)은 **모두 `if (loading) return` 위에** 있습니다. 조건부 return 아래에 훅을 두면 렌더링마다 훅 개수가 달라져서 에러가 납니다(훅 규칙).
+
+> ⚠️ 코드 확인: `Product-teach.tsx` 맨 위의 `supabase.from(...).then(console.log)`는 **렌더링할 때마다** 요청을 보내니 지워야 합니다. teach 버전의 `UL` ref는 쓰이지 않습니다. `Product.tsx`에서는 `loading`일 때 `<ul ref={UL}>`가 없다가 나중에 생기는데, `dependencies: [products]` 덕분에 데이터가 들어온 뒤 애니메이션이 다시 실행되어 정상 동작합니다.
+>
+
+---
+
+## 🧷 한 줄 요약: 인증 · 데이터 도구 고르기
+
+| 하고 싶은 것 | 도구 |
+| --- | --- |
+| 로그인 유저를 앱 전체에 공유 | `createContext` + `AuthProvider` + `useAuth()` |
+| Provider 밖에서 쓰면 바로 알기 | 훅 안에서 `if (!ctx) throw new Error(...)` |
+| 상태에서 계산되는 값 | 따로 state 말고 `isAuth: !!user` |
+| 회원가입 / 로그인 / 로그아웃 | `auth.signUp` / `auth.signInWithPassword` / `auth.signOut` |
+| 현재 로그인 유저 확인 | `auth.getUser()` (자동 반영은 `onAuthStateChange`) |
+| 가입 시 추가 정보 저장 | `signUp({ options: { data: { nickname } } })` → `user_metadata` |
+| 파일 업로드 | `storage.from('버킷').upload(경로, 파일, { upsert: true })` |
+| 이미지 미리보기 | `FileReader.readAsDataURL` + `onloadend` |
+| 입력값을 state로 제어 | controlled component (`value` + `onChange`) |
+| 폼 제출 처리 | `onSubmit` + `e.preventDefault()` + async 핸들러 |
+| 실패하면 빨리 빠져나가기 | early return (`if (error) { setError(); return; }`) |
+| 로그인 여부로 메뉴 거르기 | `routes.filter(({ title }) => !(isAuth && 목록.includes(title)))` |
+| 데이터 로직 재사용 | 커스텀 훅 `useXxx()` → `{ data, loading }` 반환 |
+| 늦게 온 응답 무시 | `let ignore = false` + cleanup에서 `ignore = true` |
+| 필요한 컬럼 타입만 | `Pick<Tables<'products'>, 'id' \| 'name'>` |
+| 데이터 도착 후 애니메이션 | `useGSAP(fn, { dependencies: [data], scope, revertOnUpdate })` |
