@@ -2,23 +2,45 @@ import { routes } from '@/router/router';
 import S from './Header.module.css';
 import NavLink from '../NavLink';
 import { useAuth } from '../auth/AuthProvider';
+import { useEffect, useState } from 'react';
+import { getAvatarUrl } from '@/api/getAvatarUrl';
 
 function Header() {
-
   // routes
   const { user, isAuth, logout } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string|null>(null);
+  const [isAvatarLoaded, setIsAvatarLoaded] = useState(false);
 
   const hideWhenLoggedIn = ['로그인', '회원가입'];
+  const alwayHidden = ['상품상세','상품등록'];
 
   const visibleRoutes = routes.filter(
-    ({title})=> !(isAuth && hideWhenLoggedIn.includes(title))
+    ({title})=> 
+      !alwayHidden.includes(title) && 
+      !(isAuth && hideWhenLoggedIn.includes(title))
   )
 
-  // 로그아웃 버튼이 필요함  isAuth
-  // 그 버튼에 핸들러가 연결 동작 
-  // supabase의 signOut() 
-  // useAuth훅 업데이트 
+  useEffect(()=>{
+    let ignore = false;
 
+    const fetchAvatarUrl = async () => {
+      if(user){
+        const avatarUrl = await getAvatarUrl(user.id);
+        if(ignore) return;
+        setAvatarUrl(avatarUrl)
+        setIsAvatarLoaded(true);
+      }else{
+        setAvatarUrl(null)
+        setIsAvatarLoaded(false);
+      }
+    }
+    fetchAvatarUrl();
+
+    return ()=> {
+      ignore = true;
+    }
+
+  },[user])
   return (
     <header className={S.header}>
       <h1><img width={100} src="/logo-white.png" alt="" /></h1>
@@ -38,6 +60,20 @@ function Header() {
           {
             isAuth && (
               <li>
+                {
+                  isAvatarLoaded && (
+                    <img
+                      style={{
+                        width:'30px',
+                        position:'absolute',
+                        right:'1px',
+                        top:'1px'
+                      }}
+                      src={avatarUrl ?? '/vite.svg'}
+                      alt="" 
+                    />
+                  )
+                }
                 <a href="#"
                   onClick={(e)=>{
                     e.preventDefault();

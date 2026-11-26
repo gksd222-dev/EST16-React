@@ -1,7 +1,7 @@
 import Footer from "./components/Layout/Footer"
 import Header from "./components/Layout/Header"
 import { routes } from "./router/router"
-import RouterProvider from "./router/RouterProvider"
+import { RouterProvider } from "./router/RouterProvider"
 import S from "./App.module.css";
 import { AuthProvider } from "./components/auth/AuthProvider";
 

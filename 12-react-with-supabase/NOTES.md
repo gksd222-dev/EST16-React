@@ -979,3 +979,574 @@ function Product() {
 | 늦게 온 응답 무시 | `let ignore = false` + cleanup에서 `ignore = true` |
 | 필요한 컬럼 타입만 | `Pick<Tables<'products'>, 'id' \| 'name'>` |
 | 데이터 도착 후 애니메이션 | `useGSAP(fn, { dependencies: [data], scope, revertOnUpdate })` |
+
+---
+
+---
+
+# 📘 router · auth · api 정리 3 (`src/router/`, `src/components/auth/`, `src/api/`)
+
+## 0. 전체 구조: 상품 목록 → 상세 / 등록 흐름
+
+**이번에 추가된 건 "주소에 id를 담아 상세 페이지로 가기(동적 라우팅)"와 "상품 등록(insert)"입니다.**
+
+```
+App.tsx
+ └─ AuthProvider            로그인 유저 공유 (+ onAuthStateChange로 자동 반영)
+     └─ RouterProvider      routes 매칭 (+ '/Product/:id' 동적 매칭, params 공유)
+         ├─ Header          아바타 표시, '상품상세'·'상품등록'은 메뉴에서 숨김
+         └─ 현재 페이지
+             ├─ /Product        Product.tsx        목록 (로그인 필요)
+             │    ├─ 상품 클릭 → /Product/abc123 → ProductDetail.tsx  (select + update)
+             │    └─ + 상품 등록 → /Create        → CreateProduct.tsx  (storage upload + insert)
+             └─ ...
+```
+
+| 파일 | 바뀐 점 |
+| --- | --- |
+| `App.tsx` | `import RouterProvider` → `import { RouterProvider }` (default export 삭제) |
+| `router/router.tsx` | `/Create`, `/Product/:id` 라우트 추가 |
+| `router/RouterProvider/index.tsx` | `matchRoute`, `params`, `useRouter()`, `useParams()` 추가 |
+| `auth/AuthProvider.tsx` | `onAuthStateChange` 구독 추가 |
+| `api/getAvatarUrl.ts` | 🆕 유저 id로 아바타 공개 URL 찾기 |
+| `Layout/Header.tsx` | 아바타 표시 + `alwayHidden` 메뉴 |
+| `pages/Product.tsx` (+css) | 로그인 가드, 상세 이동, 등록 버튼 |
+| `pages/ProductDetail.tsx` (+css) | 🆕 단건 조회 + 이름 수정 |
+| `pages/CreateProduct.tsx` (+css) | 🆕 상품 등록 폼 |
+
+---
+
+## 1. ⭐ 동적 라우팅: `router/RouterProvider/index.tsx`
+
+**`/Product/:id`처럼 `:이름`이 들어간 path를 정규식으로 바꿔서 매칭하고, 꺼낸 값을 `params`로 공유합니다.**
+
+```tsx
+const [params, setParams] = useState<Record<string, string>>({});
+
+const matchRoute = (to: string) => {
+  for (const route of routes) {
+    if (route.path.includes(":")) {                                   // 동적 라우트
+      const paramNames =
+        route.path.match(/:\w+/g)?.map((p) => p.slice(1)) ?? [];      // ['id']
+      const pattern = new RegExp(
+        "^" + route.path.replace(/:\w+/g, "([^/]+)") + "$"            // /^\/Product\/([^/]+)$/
+      );
+      const match = to.match(pattern);                                // ['/Product/abc', 'abc']
+      if (match) {
+        const params: Record<string, string> = {};
+        paramNames.forEach((name, i) => {
+          params[name] = match[i + 1];                                // { id: 'abc' }
+        });
+        return { route, params };
+      }
+    } else {                                                          // 정적 라우트 (기존 방식)
+      if (route.path === to || `/${route.path}` === to) {
+        return { route, params: {} };
+      }
+    }
+  }
+  return { route: null, params: {} };
+};
+
+const setHistoryRoute = useCallback((to: string) => {
+  const { route, params } = matchRoute(to);
+  if (route) {
+    document.title = route.title;
+    setRouteElement(route.element);
+  } else {
+    setRouteElement(<NotFound />);
+  }
+  setCurrentPath(to);
+  setParams(params);                // ✅ 파라미터 저장
+  setNavKey((k) => k + 1);
+}, [routes]);
+
+const value = useMemo(
+  () => ({ setHistoryRoute, currentPath, params }),
+  [setHistoryRoute, currentPath, params]
+);
+```
+
+### ① 정규식 변환 과정
+
+| 단계 | 코드 | 결과 (`path = '/Product/:id'`, `to = '/Product/abc123'`) |
+| --- | --- | --- |
+| 1 | `path.match(/:\w+/g)` | `[':id']` |
+| 2 | `.map(p => p.slice(1))` | `['id']` (파라미터 이름) |
+| 3 | `path.replace(/:\w+/g, '([^/]+)')` | `'/Product/([^/]+)'` (`/`가 아닌 글자 1개 이상을 캡처) |
+| 4 | `new RegExp('^' + ... + '$')` | 처음부터 끝까지 정확히 일치해야 함 |
+| 5 | `to.match(pattern)` | `['/Product/abc123', 'abc123']` |
+| 6 | `params[name] = match[i + 1]` | `{ id: 'abc123' }` (`match[0]`은 전체 문자열이라 `+1`) |
+
+- `^`와 `$`가 있어서 `/Product`는 `/Product/:id`에 매칭되지 않습니다. 그래서 router.tsx에서 순서가 바뀌어도 서로 헷갈리지 않습니다.
+
+### ② ⭐ 커스텀 훅 `useRouter()`, `useParams()`
+
+```tsx
+export function useRouter() {
+  const ctx = useContext(RouterContext);
+  if (!ctx) throw new Error("useRouter는 RouterProvider 안에서만 사용해야 합니다.");
+  return ctx;                       // { setHistoryRoute, currentPath, params }
+}
+
+export function useParams() {
+  const ctx = useContext(RouterContext);
+  if (!ctx) throw new Error("useParams는 RouterProvider 안에서만 사용해야 합니다.");
+  return ctx.params;                // { id: 'abc123' }
+}
+```
+
+| 전 | 후 |
+| --- | --- |
+| `const { setHistoryRoute } = useContext(RouterContext)!;` | `const { setHistoryRoute } = useRouter();` |
+| `!`(non-null 단언)로 null을 무시 | Provider 밖이면 에러로 바로 알려줌 |
+
+- `useAuth()`와 같은 패턴입니다. Context + null 체크를 훅 하나로 감싸서 쓰는 쪽 코드를 짧게 만듭니다.
+- 이 파일에 훅이 추가되면서 `export default RouterProvider`를 지웠습니다. 그래서 `App.tsx`가 `import { RouterProvider }`(named import)로 바뀌었습니다.
+
+> ⚠️ 코드 확인: `matchRoute`가 `useCallback` 바깥에 있어서 의존성 경고를 `eslint-disable`로 끄고 있습니다. `matchRoute`를 `useCallback` 안으로 옮기면 주석 없이 `[routes]`만으로 해결됩니다. 경로 비교는 대소문자를 구분하므로 `/product/abc`는 NotFound가 됩니다.
+>
+
+---
+
+## 2. `router/router.tsx`: 라우트 추가
+
+**path에 `:id`를 쓰면 동적 라우트가 됩니다.**
+
+```tsx
+export const routes = [
+  { title: '홈',       path: '/',            element: <Home /> },
+  { title: '상품등록', path: '/Create',      element: <CreateProduct /> },
+  { title: '상품상세', path: '/Product/:id', element: <ProductDetail /> },  // 동적 라우팅
+  { title: '상품목록', path: '/Product',     element: <Product /> },
+  // 로그인, 회원가입 ...
+];
+```
+
+- routes 배열은 메뉴 자동 생성에도 쓰입니다. 그래서 '상품상세', '상품등록'은 Header에서 따로 숨겨야 합니다(📗 1번 참고).
+
+---
+
+## 3. `auth/AuthProvider.tsx`: `onAuthStateChange` 구독
+
+**로그인/로그아웃이 일어나면 Supabase가 알려주도록 구독하고, cleanup에서 구독을 해제합니다.**
+
+```tsx
+useEffect(() => {
+  // ① 처음 한 번: 현재 로그인 유저 확인
+  supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUser({ ... }) });
+
+  // ② 이후 변화 감지
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      setUser({
+        id: session.user.id,
+        email: session.user.email!,
+        nickname: session.user.user_metadata.nickname ?? session.user.email!.split('@')[0],
+      });
+    } else if (event === 'SIGNED_OUT') {
+      setUser(null);
+    }
+  });
+
+  // ③ 정리: 컴포넌트가 사라지면 구독 해제
+  return () => data.subscription.unsubscribe();
+}, []);
+```
+
+| event | 언제 | 처리 |
+| --- | --- | --- |
+| `SIGNED_IN` | 로그인 성공 | `setUser({...})` |
+| `SIGNED_OUT` | 로그아웃 | `setUser(null)` |
+| `INITIAL_SESSION` | 구독 직후 1번 | (처리 안 함, ①의 `getUser`가 담당) |
+
+- ⭐ 구독(subscribe)을 만들면 반드시 cleanup에서 해제(unsubscribe)합니다. 안 하면 StrictMode나 재마운트 때 리스너가 계속 쌓입니다. `addEventListener` ↔ `removeEventListener`와 같은 짝입니다.
+- 덕분에 Login에서 로그인하면 새로고침 없이 Header, Product가 바로 바뀝니다.
+
+> ⚠️ 코드 확인: `setUser({...})` 객체를 만드는 코드가 ①과 ②에 똑같이 두 번 있습니다. `toUser(user)` 같은 함수로 빼면 한 곳만 고치면 됩니다.
+>
+
+---
+
+## 4. 🆕 `api/getAvatarUrl.ts`: 아바타 URL 찾기
+
+**회원가입 때 `${userId}.${확장자}`로 올린 파일을 `list`로 찾고 `getPublicUrl`로 주소를 만듭니다.**
+
+```ts
+export async function getAvatarUrl(userId: string): Promise<string | null> {
+  // ① 버킷에서 userId가 들어간 파일 목록 검색
+  const { data: files, error: listError } = await supabase.storage
+    .from('avatars')
+    .list("", { limit: 10, search: userId });
+
+  if (listError || !files) { console.error('파일 목록 불러오기 실패:', listError); return null; }
+
+  // ② userId로 시작하는 파일 고르기 (확장자를 몰라도 됨)
+  const matchedFile = files.find((file) => file.name.startsWith(userId));
+  if (!matchedFile) { console.warn(`userId로 시작하는 이미지가 없습니다: ${userId}`); return null; }
+
+  // ③ 공개 URL 만들기 (네트워크 요청 없음, 동기)
+  const { data } = supabase.storage.from('avatars').getPublicUrl(matchedFile.name);
+  return data?.publicUrl || null;
+}
+```
+
+| storage 메서드 | 역할 | await |
+| --- | --- | --- |
+| `.upload(경로, 파일, { upsert })` | 파일 올리기 | 필요 |
+| `.list(폴더, { limit, search })` | 파일 목록 검색 | 필요 |
+| `.getPublicUrl(경로)` | 공개 주소 문자열 만들기 | 불필요 (동기) |
+
+- 컴포넌트 밖 `api/` 폴더에 두어서 Supabase 통신 코드와 화면 코드를 나눕니다. 실패하면 `null`을 돌려주니 쓰는 쪽은 `?? '기본이미지'`로 처리하면 됩니다.
+
+---
+
+---
+
+# 📗 pages · Layout 정리 3 (`src/pages/`, `src/components/Layout/`)
+
+## 1. `Layout/Header.tsx`: 아바타 + 항상 숨길 메뉴
+
+**`user`가 바뀔 때마다 `getAvatarUrl`로 아바타를 가져오고, 직접 들어가는 페이지는 메뉴에서 뺍니다.**
+
+```tsx
+const { user, isAuth, logout } = useAuth();
+const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+const [isAvatarLoaded, setIsAvatarLoaded] = useState(false);
+
+const hideWhenLoggedIn = ['로그인', '회원가입'];
+const alwayHidden = ['상품상세', '상품등록'];          // 메뉴에 절대 안 보임
+
+const visibleRoutes = routes.filter(
+  ({ title }) =>
+    !alwayHidden.includes(title) &&                   // 조건 1: 항상 숨김 목록이 아니고
+    !(isAuth && hideWhenLoggedIn.includes(title))     // 조건 2: 로그인 상태 숨김도 아님
+);
+
+useEffect(() => {
+  let ignore = false;
+  const fetchAvatarUrl = async () => {
+    if (user) {
+      const avatarUrl = await getAvatarUrl(user.id);
+      if (ignore) return;                             // 늦게 온 응답 무시
+      setAvatarUrl(avatarUrl);
+      setIsAvatarLoaded(true);
+    } else {
+      setAvatarUrl(null);                             // 로그아웃 → 초기화
+      setIsAvatarLoaded(false);
+    }
+  };
+  fetchAvatarUrl();
+  return () => { ignore = true; };
+}, [user]);
+
+// JSX (로그아웃 li 안)
+{isAvatarLoaded && <img src={avatarUrl ?? '/vite.svg'} alt="" style={{ width: '30px', ... }} />}
+```
+
+- `/Product/:id`는 id가 있어야 의미가 있고, `/Create`는 목록의 버튼으로 들어갑니다. 그래서 메뉴 링크로 두지 않습니다.
+- `isAvatarLoaded`로 "아직 불러오는 중"과 "불러왔는데 없음(`null`)"을 구분합니다. 없으면 `'/vite.svg'` 기본 이미지를 보여줍니다.
+- `ignore` 플래그는 `useProducts`에서 배운 것과 같은 패턴입니다.
+
+> ⚠️ 코드 확인: `alwayHidden`은 `alwaysHidden` 오타입니다. 아바타 `<img>`에 `alt=""`보다 `alt={`${user.nickname} 프로필`}`가 접근성에 좋습니다. 인라인 `style` 대신 `Header.module.css`에 클래스로 옮기면 깔끔합니다.
+>
+
+---
+
+## 2. `Product.tsx`: 로그인 가드 + 상세·등록으로 이동
+
+**로그인 안 했으면 안내 화면을 보여주고, 상품 클릭은 `/Product/${id}`로, 버튼은 `/Create`로 보냅니다.**
+
+```tsx
+const { products, loading } = useProducts();
+const { isAuth } = useAuth();
+const UL = useRef<HTMLUListElement>(null);
+const { setHistoryRoute } = useContext(RouterContext)!;
+
+useGSAP(() => {
+  if (!UL.current || !UL.current.children) return;          // ul이 없으면(가드 화면) 건너뜀
+  gsap.fromTo('li', { y: 30, opacity: 0 }, { y: 0, opacity: 1, stagger: 0.1 });
+}, { dependencies: [products, isAuth], scope: UL, revertOnUpdate: true });
+
+// 상세 페이지로 이동
+const handleRouter = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+  e.preventDefault();                                       // <a> 기본 이동 막기
+  history.pushState(null, '', `/Product/${id}`);            // ① 주소창 바꾸기
+  setHistoryRoute(`/Product/${id}`);                        // ② 화면 바꾸기
+};
+
+// 등록 페이지로 이동
+const handleCreate = () => {
+  history.pushState(null, '', './Create');
+  setHistoryRoute('/Create');
+};
+
+if (loading) return <p className={S.loading}>loading.....</p>;
+if (!isAuth) {
+  return (
+    <div className={S.invalid}>
+      <span style={{ fontSize: '10rem' }}>🔺</span>
+      <h3>상품 목록은 로그인 후 이용이 가능합니다</h3>
+    </div>
+  );
+}
+
+return (
+  <div className={S.container}>
+    <div className={S.toolbar}>
+      <button className={S.createButton} type="button" onClick={handleCreate}>+ 상품 등록</button>
+    </div>
+    <ul ref={UL}>
+      {products && products.map((item) => (
+        <li key={item.id}>
+          <a href="/" onClick={(e) => handleRouter(e, item.id)}> ... </a>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+```
+
+### ① 페이지 이동은 항상 2단계
+
+| 단계 | 코드 | 하는 일 |
+| --- | --- | --- |
+| ① | `history.pushState(null, '', 경로)` | 주소창 + 뒤로가기 기록 |
+| ② | `setHistoryRoute(경로)` | 맞는 컴포넌트로 화면 교체 |
+
+- 둘 중 하나만 하면 주소와 화면이 따로 놉니다. `NavLink`도 안에서 같은 2단계를 합니다.
+
+### ② 화면 분기 순서
+
+```
+훅들 (useProducts, useAuth, useRef, useContext, useGSAP)   ← 항상 맨 위
+ → if (loading) return 로딩
+ → if (!isAuth) return 안내 화면
+ → return 목록
+```
+
+- `dependencies`에 `isAuth`가 들어간 이유: 로그인하면 가드 화면에서 목록으로 바뀌면서 `<ul>`이 새로 생기기 때문입니다.
+- CSS에 `.loading`, `.toolbar`, `.createButton`(`&:hover` 중첩)이 추가되었습니다.
+
+> ⚠️ 코드 확인: `console.log(isAuth)`는 렌더링마다 찍히니 지웁니다. `'./Create'`는 상대 경로라 `/Product/abc`에서 누르면 `/Product/Create`가 됩니다. `'/Create'`로 맞춥니다. 이제 `useRouter()`가 있으니 `useContext(RouterContext)!` 대신 씁니다. `useProducts()`는 로그인 전에도 요청을 보냅니다.
+>
+
+---
+
+## 3. ⭐ `ProductDetail.tsx`: 단건 조회(select) + 수정(update)
+
+**`useParams()`로 주소의 id를 꺼내 `.eq('id', id).single()`로 상품 1개를 가져오고, 이름을 `update`로 고칩니다.**
+
+```tsx
+type Product = Tables<'products'>;
+
+function ProductDetail() {
+  const { id } = useParams();                                   // '/Product/abc123' → 'abc123'
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');                         // 수정용 input 값
+  const { setHistoryRoute } = useRouter();
+
+  // product가 도착하면 input 초기값 채우기
+  useEffect(() => {
+    if (!product) return;
+    setName(product.name);
+  }, [product]);
+
+  // 조회
+  useEffect(() => {
+    if (!id) return;
+    let ignore = false;
+    const fetchProduct = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', id)        // id가 일치하는 행만
+        .single();           // 배열 말고 객체 1개로 받기
+      if (ignore) return;
+      if (error) setError('상품을 불러올 수 없습니다.');
+      else setProduct(data);
+      setLoading(false);
+    };
+    fetchProduct();
+    return () => { ignore = true; };
+  }, [id]);
+
+  // 수정
+  const handleUpdate = async () => {
+    const { data, error: updateError } = await supabase
+      .from('products')
+      .update({ name })      // 바꿀 컬럼만
+      .eq('id', id)          // ⭐ 없으면 모든 행이 바뀜
+      .select();             // 바뀐 행을 돌려받기
+    if (updateError || !data || data.length === 0) {
+      alert('상품 수정 실패 :' + (updateError?.message ?? '수정 권한이 없거나 상품이 없습니다.'));
+      return false;
+    }
+    alert('상품 수정 완료!');
+    return true;
+  };
+
+  if (loading) return <p>상품 정보 불러오는 중.....</p>;
+  if (error || !product) return <p>{error ?? '해당 상품이 존재하지 않습니다.'}</p>;
+
+  return (
+    <div className={S.container}>
+      <img src={product.image_url} alt={product.name} className={S.image} />
+      <input className={S.nameInput} value={name} onChange={(e) => setName(e.target.value)} />
+      {/* 가격 · 할인 */}
+      <button type="button" onClick={() => {
+        handleUpdate().then((ok) => {
+          if (!ok) return;
+          history.pushState(null, '', '/Product');
+          setHistoryRoute('/Product');
+        });
+      }}>EDIT</button>
+      <button type="button" onClick={() => { /* /Product로 이동 */ }}>BACK</button>
+    </div>
+  );
+}
+```
+
+### ① Supabase 쿼리 체이닝
+
+| 메서드 | 뜻 | SQL로 치면 |
+| --- | --- | --- |
+| `.from('products')` | 테이블 고르기 | `FROM products` |
+| `.select('*')` | 조회 | `SELECT *` |
+| `.update({ name })` | 수정 | `UPDATE ... SET name = ...` |
+| `.eq('id', id)` | 조건 | `WHERE id = ...` |
+| `.single()` | 결과를 객체 1개로 (0개·2개 이상이면 error) | — |
+| `.select()` (update 뒤) | 바뀐 행 돌려받기 | `RETURNING *` |
+
+### ② ⭐ update가 "성공"인데 아무것도 안 바뀌는 경우
+
+- RLS(행 수준 보안) 정책 때문에 수정 권한이 없으면 Supabase는 **에러 없이 0개 행**을 바꿉니다.
+- 그래서 `.select()`로 바뀐 행을 돌려받고 `data.length === 0`도 실패로 처리합니다.
+
+### ③ `handleUpdate`가 `true/false`를 반환하는 이유
+
+- 통신(수정)과 화면 이동을 나눕니다. 성공했을 때만 `.then((ok) => ...)`에서 목록으로 이동합니다.
+
+> ⚠️ 코드 확인: `loading` 초기값이 `false`라서 첫 렌더링에서 `product`가 `null`이면 "해당 상품이 존재하지 않습니다."가 잠깐 보입니다. `useState(true)`로 시작하면 됩니다. `setName`용 `useEffect`를 따로 두지 않고 조회할 때 `setProduct(data); setName(data.name);`처럼 같이 넣어도 됩니다.
+>
+
+---
+
+## 4. ⭐ `CreateProduct.tsx`: 이미지 업로드 → 공개 URL → insert
+
+**Register의 아바타 업로드와 같은 흐름에 "DB에 행 추가(insert)"가 붙은 폼입니다.**
+
+```tsx
+const [name, setName] = useState('');
+const [sale, setSale] = useState('');
+const [description, setDescription] = useState('');
+const [price, setPrice] = useState('');
+const [imageFile, setImageFile] = useState<File | null>(null);
+const [error, setError] = useState<string | null>(null);
+const { user } = useAuth();
+const { setHistoryRoute } = useRouter();
+
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  setError(null);
+
+  // 검사 (early return)
+  if (!user) { setError('로그인 후 사용 가능합니다.'); return; }
+  if (!name || !price || !imageFile) { setError('필수 입력값을 확인해주세요.'); return; }
+
+  // step 1 : 이미지 업로드
+  const fileExt = imageFile.name.split('.').pop();
+  const filePath = `${user.id}_${Date.now()}.${fileExt}`;   // 겹치지 않는 파일명
+  const { error: uploadError } = await supabase.storage
+    .from('product-images')
+    .upload(filePath, imageFile, { upsert: true });
+  if (uploadError) { setError('이미지 업로드 실패'); return; }
+
+  // step 2 : 공개 url 만들기
+  const imageUrl = supabase.storage
+    .from('product-images')
+    .getPublicUrl(filePath).data.publicUrl;
+
+  // step 3 : 상품 데이터 업로드 (작성 예시)
+  const { error: insertError } = await supabase
+    .from('products')
+    .insert({
+      name,
+      description,
+      price: Number(price),          // 문자열 → 숫자
+      sale: Number(sale) || 0,
+      image_url: imageUrl,           // ⭐ 컬럼명은 snake_case
+      email: user.email,
+    });
+  if (insertError) { setError('상품 등록 실패'); return; }
+
+  history.pushState(null, '', '/Product');
+  setHistoryRoute('/Product');
+};
+
+// JSX: 숫자만 입력 받기
+<input value={price} onChange={(e) => {
+  const value = e.target.value;
+  if (/^\d*$/.test(value)) setPrice(value);      // 숫자가 아니면 state를 안 바꿈
+}} type="text" required />
+
+<input type="file" accept="image/*"
+  onChange={(e) => setImageFile(e.target.files?.[0] ?? null)} />
+```
+
+### ① 3단계 흐름
+
+| step | 하는 일 | 메서드 |
+| --- | --- | --- |
+| 1 | Storage에 이미지 파일 올리기 | `storage.from('product-images').upload()` |
+| 2 | 올린 파일의 주소 만들기 | `getPublicUrl(filePath).data.publicUrl` |
+| 3 | 주소를 포함한 상품 정보를 테이블에 넣기 | `from('products').insert({...})` |
+
+### ② insert 객체 규칙 (`database.types.ts`의 `Insert` 타입 기준)
+
+| 컬럼 | 필수? | 넣는 값 |
+| --- | --- | --- |
+| `name`, `description` | 필수 | state 그대로 (변수명 = 컬럼명이라 축약) |
+| `price` | 필수 (number) | `Number(price)` |
+| `sale` | 선택 (number) | `Number(sale) \|\| 0` |
+| `image_url` | 필수 | `imageUrl` (이름이 달라서 `키: 값`) |
+| `email` | 선택 | `user.email` |
+| `id`, `created_at` | 선택 | 안 넣음 (DB가 자동 생성) |
+
+### ③ Register 업로드와 비교
+
+| 항목 | `Register.tsx` 아바타 | `CreateProduct.tsx` 상품 이미지 |
+| --- | --- | --- |
+| 버킷 | `avatars` | `product-images` |
+| 파일명 | `${userId}.${ext}` (유저당 1개, 덮어씀) | `${userId}_${Date.now()}.${ext}` (상품마다 새 파일) |
+| 이후 | 끝 | 공개 URL → `insert` |
+
+- 숫자 input을 `type="text"` + 정규식 `/^\d*$/`로 막은 이유: `type="number"`는 `e`, `-`, `.` 입력이 되고 빈 값 처리가 까다롭기 때문입니다.
+- `e.target.files?.[0] ?? null`: 파일 선택을 취소하면 `files`가 비어 있으니 `null`로 맞춥니다.
+
+> ⚠️ 코드 확인: 현재 파일에는 step 3이 주석만 있고 비어 있습니다(위는 작성 예시). 그래서 `setHistoryRoute`가 아직 쓰이지 않습니다. insert가 실패하면 이미지만 Storage에 남으니, 필요하면 `storage.from('product-images').remove([filePath])`로 지웁니다. 할인율 onChange가 `setSale(e.target.value)`로 되어 있는데, 위에서 만든 `value`를 쓰면 가격 input과 통일됩니다. `<label>`에 `htmlFor`가 없어서 라벨을 눌러도 input에 포커스가 가지 않습니다(`useId` 사용).
+>
+
+---
+
+## 🧷 한 줄 요약: 라우팅 · CRUD 도구 고르기
+
+| 하고 싶은 것 | 도구 |
+| --- | --- |
+| 주소에 id 담기 | path에 `'/Product/:id'` |
+| 주소에서 id 꺼내기 | `const { id } = useParams()` |
+| 페이지 이동 | `history.pushState(null, '', 경로)` + `setHistoryRoute(경로)` |
+| Context를 짧고 안전하게 | `useRouter()` / `useAuth()` (안에서 null이면 throw) |
+| 로그인 변화 자동 반영 | `auth.onAuthStateChange` + cleanup `subscription.unsubscribe()` |
+| 메뉴에서 특정 페이지 빼기 | `!alwaysHidden.includes(title) && ...` |
+| 로그인 안 하면 막기 | 훅 아래에서 `if (!isAuth) return <안내 />` |
+| 상품 1개 조회 | `.select('*').eq('id', id).single()` |
+| 상품 수정 | `.update({ name }).eq('id', id).select()` + `data.length` 확인 |
+| 상품 추가 | `.insert({ name, price: Number(price), image_url, ... })` |
+| 업로드한 파일 주소 | `storage.from(버킷).getPublicUrl(경로).data.publicUrl` |
+| 파일 이름으로 찾기 | `storage.from(버킷).list('', { search })` + `startsWith` |
+| 숫자만 입력 | `type="text"` + `if (/^\d*$/.test(value)) setX(value)` |
+| 겹치지 않는 파일명 | `` `${user.id}_${Date.now()}.${ext}` `` |

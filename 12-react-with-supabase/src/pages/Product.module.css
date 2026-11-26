@@ -66,3 +66,36 @@
     text-decoration: underline;
   }
 }
+
+.loading {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  color: #FD98AF;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2.5rem 2.5rem 0;
+}
+ 
+.createButton {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 6px;
+  background-color: #404040;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+ 
+  &:hover {
+    background-color: #000;
+  }
+}

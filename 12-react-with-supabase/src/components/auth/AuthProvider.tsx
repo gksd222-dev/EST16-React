@@ -32,6 +32,27 @@ export function AuthProvider({children}:{children:React.ReactNode}){
         })
       }
     })
+
+
+    const {data} = supabase.auth.onAuthStateChange((event, session)=>{
+
+      if(event === 'SIGNED_IN' && session?.user){
+        setUser({ 
+          id: session.user.id, 
+          email: session.user.email!,
+          nickname:session.user.user_metadata.nickname ?? session.user.email!.split('@')[0],
+        })
+      }
+      else if(event === 'SIGNED_OUT'){
+        setUser(null);
+      }
+      
+    })
+
+
+    return () => data.subscription.unsubscribe();
+
+
   },[])
 
 
