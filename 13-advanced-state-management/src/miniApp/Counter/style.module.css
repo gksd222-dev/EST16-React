@@ -1,0 +1,26 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "@/styles/_theme.css";   
+
+.component {
+  @apply inline-flex items-center border rounded-sm border-solid border-accent;
+}
+
+.component .output {
+  @apply select-none text-sm font-light text-center text-accent;
+  inline-size: 2rem;
+}
+
+.component .group {
+  @apply inline-flex items-center;
+  flex-flow: column;
+}
+
+.component .button {
+  @apply select-none text-[#999] text-xs bg-transparent opacity-75 p-0 border-0;
+  block-size: 14px;
+  inline-size: 14px;
+}
+
+.component .button:hover:not(:disabled) {
+  @apply opacity-100 bg-[#ededed] text-accent;
+}

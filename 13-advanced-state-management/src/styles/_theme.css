@@ -1,0 +1,14 @@
+
+
+
+
+
+
+@theme {
+  --color-accent: rgb(67 56 202);
+  --spacing-sm: 4px;
+  --color-planned: var(--color-slate-400);
+  --color-ongoing: var(--color-teal-400);
+  --color-done: var(--color-blue-400);
+}
+
